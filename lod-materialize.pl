@@ -204,7 +204,7 @@ foreach my $s (@out) {
 	$serializers{ $s }	= RDF::Trine::Serializer->new( $s, namespaces => \%namespaces );
 }
 
-my %ext	= ( rdfxml => 'rdf', turtle => 'ttl' );
+my %ext	= ( rdfxml => 'rdf', turtle => 'ttl', ntriples => 'nt' );
 foreach my $filename (keys %files) {
 	my $parser	= RDF::Trine::Parser->new('ntriples');
 	my $model	= RDF::Trine::Model->temporary_model;
