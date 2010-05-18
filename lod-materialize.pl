@@ -103,7 +103,7 @@ use strict;
 use warnings;
 use RDF::Trine;
 use File::Spec;
-use File::Path qw(make_path);
+use File::Path 2.06 qw(make_path);
 use Getopt::Long;
 use Data::Dumper;
 
