@@ -110,10 +110,11 @@ use Data::Dumper;
 my %namespaces;
 my $in		= 'ntriples';
 my $out		= 'rdfxml,turtle,ntriples';
-my $matchre	= qr</resource/(.*)>;
+my $matchre	= q</resource/(.*)>;
 my $outre	= '/data/$1';
 my $dryrun	= 0;
 my $debug	= 0;
+my $apache	= 0;
 my $result	= GetOptions (
 	"in=s"			=> \$in,
 	"out=s"			=> \$out,
@@ -123,6 +124,7 @@ my $result	= GetOptions (
 	"filepattern=s"	=> \$outre,
 	"verbose"		=> \$debug,
 	"n"				=> \$dryrun,
+	"apache"		=> \$apache,
 );
 
 unless (@ARGV) {
@@ -207,7 +209,9 @@ foreach my $s (@out) {
 my %ext	= ( rdfxml => 'rdf', turtle => 'ttl', ntriples => 'nt' );
 foreach my $filename (keys %files) {
 	my $parser	= RDF::Trine::Parser->new('ntriples');
-	my $model	= RDF::Trine::Model->temporary_model;
+	my $store	= RDF::Trine::Store::DBI->temporary_store;
+	my $model	= RDF::Trine::Model->new( $store );
+	warn "Parsing file $filename ...\n" if ($debug);
 	unless ($dryrun) {
 		open( my $fh, '<:utf8', $filename ) or do { warn $!; next };
 		$parser->parse_file_into_model( $url, $fh, $model );
@@ -229,4 +233,24 @@ foreach my $filename (keys %files) {
 			unlink($filename);
 		}
 	}
+}
+
+if ($apache) {
+	print "\n# Apache Configuration:\n";
+	print "#######################\n";
+	my $match	= substr($matchre,1);
+	my $redir	= $outre;
+	$redir		=~ s/\\(\d+)/\$$1/g;
+	print <<"END";
+Options +MultiViews
+AddType text/turtle .ttl
+AddType text/plain .nt
+AddType application/rdf+xml .rdf
+
+RewriteEngine On
+RewriteBase /
+RewriteRule ^${match}\$ $redir [R=303,L]
+#######################
+
+END
 }
