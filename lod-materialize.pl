@@ -22,7 +22,7 @@ For example, using the input RDF:
  @prefix dbo: <http://dbpedia.org/ontology/> .
  
  db:Berlin a dbo:City ;
-     rdfs:label "Berlin"@en .
+     rdfs:label "Berlin"@en ;
      prop:population 3431700 .
  db:Deutsche_Bahn dbo:locationCity db:Berlin .
 
@@ -40,7 +40,7 @@ Will produce the files:
 The process of mapping URIs to files on disk can be configured using the command
 line OPTIONS 'uripattern' and 'filepattern':
 
- lod-materialize.pl --uripattern="/resource/(.*)" --filepattern="/page/\1" data.rdf http://dbpedia.org /var/www
+ lod-materialize.pl --uripattern="/resource/(.*)" --filepattern="/page/\\1" data.rdf http://dbpedia.org /var/www
 
 This will create the files:
 
@@ -94,6 +94,13 @@ pattern must specify an absolute URI path (starting with '/').
 Specifies the path template to use in constructing data filenames. This pattern
 will be used to construct an absolute filename by interpreting it relative to
 the path specified for the document root (/path/to/www above).
+
+=item * --apache
+
+Print the Apache configuration needed to serve the produced RDF files as linked
+data. This includes setting Multiview for content negotiation, the media type
+registration for RDF files and mod_rewrite rules for giving 303 redirects from
+resource URIs to the content negotiated data URIs.
 
 =back
 
