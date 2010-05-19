@@ -28,7 +28,7 @@ For example, using the input RDF:
 
 Invoking this command:
 
- lod-materialize.pl data.rdf http://dbpedia.org /var/www
+ lod-materialize.pl -i=turtle data.ttl http://dbpedia.org /var/www
 
 Will produce the files:
 
@@ -86,8 +86,9 @@ Performa dry-run without modifying any files on disk.
 
 =item * --uripattern=PATTERN
 
-Specifies the URI pattern to match against URIs used in the input RDF. This
-pattern must specify an absolute URI path (starting with '/').
+Specifies the URI pattern to match against URIs used in the input RDF. URIs in
+the input RDF are matched against this pattern appended to the base URI
+(http://base above).
 
 =item * --filepattern=PATTERN
 
