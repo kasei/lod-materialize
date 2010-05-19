@@ -214,7 +214,7 @@ foreach my $s (@out) {
 }
 
 my %ext	= ( rdfxml => 'rdf', turtle => 'ttl', ntriples => 'nt' );
-foreach my $filename (keys %files) {
+foreach my $filename (sort keys %files) {
 	my $parser	= RDF::Trine::Parser->new('ntriples');
 	my $store	= RDF::Trine::Store::DBI->temporary_store;
 	my $model	= RDF::Trine::Model->new( $store );
