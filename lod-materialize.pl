@@ -7,6 +7,7 @@ lod-materialize.pl - Materialize the files necessary to host slash-based linked 
 =head1 SYNOPSIS
 
  lod-materialize.pl [OPTIONS] data.rdf http://base /path/to/www
+
 =head1 DESCRIPTION
 
 This script will materialize the necessary files for serving static linked data.
@@ -214,31 +215,34 @@ foreach my $s (@out) {
 	$serializers{ $s }	= RDF::Trine::Serializer->new( $s, namespaces => \%namespaces );
 }
 
-my %ext	= ( rdfxml => 'rdf', turtle => 'ttl', ntriples => 'nt' );
-foreach my $filename (sort keys %files) {
-	my $parser	= RDF::Trine::Parser->new('ntriples');
-	my $store	= RDF::Trine::Store::DBI->temporary_store;
-	my $model	= RDF::Trine::Model->new( $store );
-	warn "Parsing file $filename ...\n" if ($debug);
-	unless ($dryrun) {
-		open( my $fh, '<:utf8', $filename ) or do { warn $!; next };
-		$parser->parse_file_into_model( $url, $fh, $model );
-	}
-	while (my($name, $s) = each(%serializers)) {
-		my $ext	= $ext{ $name };
-		my $outfile	= $filename;
-		$outfile	=~ s/[.]nt/.$ext/;
-		warn "Creating file $outfile ...\n" if ($debug);
+my @new_formats	= grep { $_ ne 'ntriples' } keys %serializers;
+if (@new_formats) {
+	my %ext	= ( rdfxml => 'rdf', turtle => 'ttl', ntriples => 'nt' );
+	foreach my $filename (sort keys %files) {
+		my $parser	= RDF::Trine::Parser->new('ntriples');
+		my $store	= RDF::Trine::Store::DBI->temporary_store;
+		my $model	= RDF::Trine::Model->new( $store );
+		warn "Parsing file $filename ...\n" if ($debug);
 		unless ($dryrun) {
-			open( my $out, '>:utf8', $outfile ) or do { warn $!; next };
-			$s->serialize_model_to_file( $out, $model );
+			open( my $fh, '<:utf8', $filename ) or do { warn $!; next };
+			$parser->parse_file_into_model( $url, $fh, $model );
 		}
-	}
-	
-	unless (exists $serializers{'ntriples'}) {
-		warn "Removing file $filename ...\n" if ($debug);
-		unless ($dryrun) {
-			unlink($filename);
+		while (my($name, $s) = each(%serializers)) {
+			my $ext	= $ext{ $name };
+			my $outfile	= $filename;
+			$outfile	=~ s/[.]nt/.$ext/;
+			warn "Creating file $outfile ...\n" if ($debug);
+			unless ($dryrun) {
+				open( my $out, '>:utf8', $outfile ) or do { warn $!; next };
+				$s->serialize_model_to_file( $out, $model );
+			}
+		}
+		
+		unless (exists $serializers{'ntriples'}) {
+			warn "Removing file $filename ...\n" if ($debug);
+			unless ($dryrun) {
+				unlink($filename);
+			}
 		}
 	}
 }
