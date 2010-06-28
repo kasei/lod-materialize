@@ -81,8 +81,6 @@ Print information about file modifications to STDERR.
 
 =item * -n
 
-=item * --dryrun
-
 Performa dry-run without modifying any files on disk.
 
 =item * --uripattern=PATTERN
@@ -160,6 +158,27 @@ if ($debug) {
 	warn "Output formats : " . join(', ', @out) . "\n";
 	warn "URL Pattern    : $matchre\n";
 	warn "File Pattern   : $outre\n";
+}
+
+if ($apache) {
+	print "\n# Apache Configuration:\n";
+	print "#######################\n";
+	my $match	= substr($matchre,1);
+	my $redir	= $outre;
+	$redir		=~ s/\\(\d+)/\$$1/g;
+	print <<"END";
+Options +MultiViews
+AddType text/turtle .ttl
+AddType text/plain .nt
+AddType application/rdf+xml .rdf
+
+RewriteEngine On
+RewriteBase /
+RewriteRule ^${match}\$ $redir [R=303,L]
+#######################
+
+END
+	exit;
 }
 
 open( my $fh, '<:utf8', $file ) or die "Can't open RDF file $file: $!";
@@ -245,24 +264,4 @@ if (@new_formats) {
 			}
 		}
 	}
-}
-
-if ($apache) {
-	print "\n# Apache Configuration:\n";
-	print "#######################\n";
-	my $match	= substr($matchre,1);
-	my $redir	= $outre;
-	$redir		=~ s/\\(\d+)/\$$1/g;
-	print <<"END";
-Options +MultiViews
-AddType text/turtle .ttl
-AddType text/plain .nt
-AddType application/rdf+xml .rdf
-
-RewriteEngine On
-RewriteBase /
-RewriteRule ^${match}\$ $redir [R=303,L]
-#######################
-
-END
 }
