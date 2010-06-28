@@ -83,6 +83,15 @@ Print information about file modifications to STDERR.
 
 Performa dry-run without modifying any files on disk.
 
+=item * --progress
+
+Prints out periodic progress of the materialization process.
+
+=item * --concurrency=N
+
+Performs the transcoding of materialized files into secondary RDF formats using
+the specified number of threads.
+
 =item * --uripattern=PATTERN
 
 Specifies the URI pattern to match against URIs used in the input RDF. URIs in
@@ -108,11 +117,13 @@ resource URIs to the content negotiated data URIs.
 
 use strict;
 use warnings;
+use threads;
 use RDF::Trine;
 use File::Spec;
 use File::Path 2.06 qw(make_path);
 use Getopt::Long;
 use Data::Dumper;
+use List::MoreUtils qw(part);
 
 my %namespaces;
 my $in		= 'ntriples';
@@ -122,6 +133,8 @@ my $outre	= '/data/$1';
 my $dryrun	= 0;
 my $debug	= 0;
 my $apache	= 0;
+my $count	= 0;
+my $threads	= 4;
 my $result	= GetOptions (
 	"in=s"			=> \$in,
 	"out=s"			=> \$out,
@@ -131,7 +144,9 @@ my $result	= GetOptions (
 	"filepattern=s"	=> \$outre,
 	"verbose"		=> \$debug,
 	"n"				=> \$dryrun,
+	"progress"		=> \$count,
 	"apache"		=> \$apache,
+	"concurrency=s"	=> \$threads,
 );
 
 unless (@ARGV) {
@@ -158,6 +173,7 @@ if ($debug) {
 	warn "Output formats : " . join(', ', @out) . "\n";
 	warn "URL Pattern    : $matchre\n";
 	warn "File Pattern   : $outre\n";
+	warn "Output path    : " . File::Spec->rel2abs($base) . "\n";
 }
 
 if ($apache) {
@@ -181,15 +197,83 @@ END
 	exit;
 }
 
+$|						= 1;
+my $parser				= RDF::Trine::Parser->new( $in );
+my $serializer			= RDF::Trine::Serializer->new( 'ntriples', namespaces => \%namespaces );
+my $files_created		= 0;
+my $triples_processed	= 0;
+
 open( my $fh, '<:utf8', $file ) or die "Can't open RDF file $file: $!";
-
-my $parser	= RDF::Trine::Parser->new( $in );
-my $serializer	= RDF::Trine::Serializer->new( 'ntriples', namespaces => \%namespaces );
-
 $parser->parse_file( 'http://base/', $fh, \&handle_triple );
+print "\n" if ($count);
+
+my %serializers;
+foreach my $s (@out) {
+	$serializers{ $s }	= RDF::Trine::Serializer->new( $s, namespaces => \%namespaces );
+}
+
+my @new_formats	= grep { $_ ne 'ntriples' } keys %serializers;
+my %ext			= ( rdfxml => 'rdf', turtle => 'ttl', ntriples => 'nt' );
+if (@new_formats) {
+	my @files : shared;
+	@files	= sort keys %files;
+	my $i	= 0;
+	my @partitions	= part { $i++ % $threads } @files;
+	my @threads;
+	foreach my $pnum (0 .. $#partitions) {
+		my $t	= threads->create( \&transcode_files, $pnum, $partitions[ $pnum ] );
+		push(@threads, $t);
+#		transcode_files( $pnum, $partitions[ $pnum ] );
+	}
+	
+	$_->join() for (@threads);
+	print "\n" if ($count);
+}
+
+
+
+sub transcode_files {
+	my $process	= shift;
+	my $files	= shift;
+	my $total	= scalar(@$files);
+	foreach my $i (0 .. $#{ $files }) {
+		my $filename	= $files->[ $i ];
+		if ($count) {
+			my $num		= $i+1;
+			my $perc	= ($num/$total) * 100;
+			printf("\rProcess $process transcoding file $num / $total (%3.1f%%)\t\t", $perc);
+		}
+		my $parser	= RDF::Trine::Parser->new('ntriples');
+		my $store	= RDF::Trine::Store::DBI->temporary_store;
+		my $model	= RDF::Trine::Model->new( $store );
+		warn "Parsing file $filename ...\n" if ($debug);
+		unless ($dryrun) {
+			open( my $fh, '<:utf8', $filename ) or do { warn $!; next };
+			$parser->parse_file_into_model( $url, $fh, $model );
+		}
+		while (my($name, $s) = each(%serializers)) {
+			my $ext	= $ext{ $name };
+			my $outfile	= $filename;
+			$outfile	=~ s/[.]nt/.$ext/;
+			warn "Creating file $outfile ...\n" if ($debug);
+			unless ($dryrun) {
+				open( my $out, '>:utf8', $outfile ) or do { warn $!; next };
+				$s->serialize_model_to_file( $out, $model );
+			}
+		}
+		
+		unless (exists $serializers{'ntriples'}) {
+			warn "Removing file $filename ...\n" if ($debug);
+			unless ($dryrun) {
+				unlink($filename);
+			}
+		}
+	}
+}
 
 sub handle_triple {
 	my $st	= shift;
+	$triples_processed++;
 # 	warn "parsing triple: " . $st->as_string . "\n";
 	foreach my $pos (qw(subject object)) {
 		my $obj	= $st->$pos();
@@ -217,8 +301,9 @@ sub handle_triple {
 		my $filename	= File::Spec->catfile( $path, "${thing}.nt" );
 		unless ($files{ $filename }) {
 			$files{ $filename }++;
-			unless (-r $filename) {
+			unless (-w $filename) {
 				warn "Creating file $filename ...\n" if ($debug);
+				$files_created++;
 			}
 		}
 		unless ($dryrun) {
@@ -226,42 +311,7 @@ sub handle_triple {
 			$serializer->serialize_iterator_to_file( $fh, RDF::Trine::Iterator::Graph->new([$st]) );
 		}
 	}
-}
-
-
-my %serializers;
-foreach my $s (@out) {
-	$serializers{ $s }	= RDF::Trine::Serializer->new( $s, namespaces => \%namespaces );
-}
-
-my @new_formats	= grep { $_ ne 'ntriples' } keys %serializers;
-if (@new_formats) {
-	my %ext	= ( rdfxml => 'rdf', turtle => 'ttl', ntriples => 'nt' );
-	foreach my $filename (sort keys %files) {
-		my $parser	= RDF::Trine::Parser->new('ntriples');
-		my $store	= RDF::Trine::Store::DBI->temporary_store;
-		my $model	= RDF::Trine::Model->new( $store );
-		warn "Parsing file $filename ...\n" if ($debug);
-		unless ($dryrun) {
-			open( my $fh, '<:utf8', $filename ) or do { warn $!; next };
-			$parser->parse_file_into_model( $url, $fh, $model );
-		}
-		while (my($name, $s) = each(%serializers)) {
-			my $ext	= $ext{ $name };
-			my $outfile	= $filename;
-			$outfile	=~ s/[.]nt/.$ext/;
-			warn "Creating file $outfile ...\n" if ($debug);
-			unless ($dryrun) {
-				open( my $out, '>:utf8', $outfile ) or do { warn $!; next };
-				$s->serialize_model_to_file( $out, $model );
-			}
-		}
-		
-		unless (exists $serializers{'ntriples'}) {
-			warn "Removing file $filename ...\n" if ($debug);
-			unless ($dryrun) {
-				unlink($filename);
-			}
-		}
+	if ($count) {
+		print "\r${triples_processed}T / ${files_created}F";
 	}
 }
