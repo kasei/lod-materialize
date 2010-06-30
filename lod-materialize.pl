@@ -134,7 +134,7 @@ my $dryrun	= 0;
 my $debug	= 0;
 my $apache	= 0;
 my $count	= 0;
-my $threads	= 4;
+my $threads	= 1;
 my $result	= GetOptions (
 	"in=s"			=> \$in,
 	"out=s"			=> \$out,
@@ -218,15 +218,19 @@ if (@new_formats) {
 	my @files : shared;
 	@files	= sort keys %files;
 	my $i	= 0;
-	my @partitions	= part { $i++ % $threads } @files;
-	my @threads;
-	foreach my $pnum (0 .. $#partitions) {
-		my $t	= threads->create( \&transcode_files, $pnum, $partitions[ $pnum ] );
-		push(@threads, $t);
-#		transcode_files( $pnum, $partitions[ $pnum ] );
+	if ($threads == 1) {
+		transcode_files( 1, \@files );
+	} else {
+		my @partitions	= part { $i++ % $threads } @files;
+		my @threads;
+		foreach my $pnum (0 .. $#partitions) {
+			my $t	= threads->create( \&transcode_files, $pnum, $partitions[ $pnum ] );
+			push(@threads, $t);
+	#		transcode_files( $pnum, $partitions[ $pnum ] );
+		}
+		
+		$_->join() for (@threads);
 	}
-	
-	$_->join() for (@threads);
 	print "\n" if ($count);
 }
 
