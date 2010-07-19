@@ -135,6 +135,7 @@ my $debug	= 0;
 my $apache	= 0;
 my $count	= 0;
 my $threads	= 1;
+my $files_per_dir	= 0;
 my $result	= GetOptions (
 	"in=s"			=> \$in,
 	"out=s"			=> \$out,
@@ -147,6 +148,7 @@ my $result	= GetOptions (
 	"progress"		=> \$count,
 	"apache"		=> \$apache,
 	"concurrency=s"	=> \$threads,
+	"filelimit|L=i"	=> \$files_per_dir,
 );
 
 unless (@ARGV) {
@@ -168,12 +170,13 @@ if ($url =~ m<[/]$>) {
 }
 
 if ($debug) {
-	warn "Input file     : $file\n";
-	warn "Input format   : $in\n";
-	warn "Output formats : " . join(', ', @out) . "\n";
-	warn "URL Pattern    : $matchre\n";
-	warn "File Pattern   : $outre\n";
-	warn "Output path    : " . File::Spec->rel2abs($base) . "\n";
+	warn "Input file               : $file\n";
+	warn "Input format             : $in\n";
+	warn "Output formats           : " . join(', ', @out) . "\n";
+	warn "URL Pattern              : $matchre\n";
+	warn "File Pattern             : $outre\n";
+	warn "Output path              : " . File::Spec->rel2abs($base) . "\n";
+	warn "File Limit per Directory : $files_per_dir\n" if ($files_per_dir);
 }
 
 if ($apache) {
@@ -202,6 +205,7 @@ my $parser				= RDF::Trine::Parser->new( $in );
 my $serializer			= RDF::Trine::Serializer->new( 'ntriples', namespaces => \%namespaces );
 my $files_created		= 0;
 my $triples_processed	= 0;
+my %files_per_dir;
 
 open( my $fh, '<:utf8', $file ) or die "Can't open RDF file $file: $!";
 $parser->parse_file( 'http://base/', $fh, \&handle_triple );
@@ -233,7 +237,6 @@ if (@new_formats) {
 	}
 	print "\n" if ($count);
 }
-
 
 
 sub transcode_files {
@@ -297,6 +300,7 @@ sub handle_triple {
 		unless ($paths{ $path }) {
 			warn "Creating directory $path ...\n" if ($debug);
 			$paths{ $path }++;
+			$files_per_dir{ $path }	= 0;
 			unless ($dryrun) {
 				make_path( $path );
 			}
@@ -304,11 +308,16 @@ sub handle_triple {
 		
 		my $filename	= File::Spec->catfile( $path, "${thing}.nt" );
 		unless ($files{ $filename }) {
-			$files{ $filename }++;
 			unless (-w $filename) {
 				warn "Creating file $filename ...\n" if ($debug);
+				$files_per_dir{ $path }++;
+				if ($files_per_dir > 0 and $files_per_dir{ $path } > $files_per_dir) {
+					warn "*** Hit maximum file limit in directory $path. Materialized data will be incomplete.\n";
+					next;
+				}
 				$files_created++;
 			}
+			$files{ $filename }++;
 		}
 		unless ($dryrun) {
 			open( my $fh, '>>:utf8', $filename ) or next;
