@@ -152,7 +152,7 @@ my $result	= GetOptions (
 	"D=s"			=> \%namespaces,
 	"uripattern=s"	=> \$matchre,
 	"filepattern=s"	=> \$outre,
-	"verbose"		=> \$debug,
+	"verbose+"		=> \$debug,
 	"n"				=> \$dryrun,
 	"progress"		=> \$count,
 	"apache"		=> \$apache,
@@ -256,10 +256,10 @@ if (defined($dir_index)) {
 			foreach my $f2 (glob("${abs}.*")) {
 				my ($ext)	= $f2 =~ /.*[.](.*)$/ or do { warn $f2; next };
 				my $new	= File::Spec->catfile( File::Spec->rel2abs( $dir ), $dir_index . ".$ext" );
-				if ($debug) {
+				if ($debug > 1) {
 					my $f2rel	= File::Spec->abs2rel( $f2 );
 					my $newrel	= File::Spec->abs2rel( $new );
-					warn "Renaming $f2rel -> $newrel\n" if ($debug);
+					warn "Renaming $f2rel -> $newrel\n";
 				}
 				unless ($dryrun) {
 					rename($f2, $new);
@@ -285,7 +285,7 @@ sub transcode_files {
 		my $parser	= RDF::Trine::Parser->new('ntriples');
 		my $store	= RDF::Trine::Store::DBI->temporary_store;
 		my $model	= RDF::Trine::Model->new( $store );
-		warn "Parsing file $filename ...\n" if ($debug);
+		warn "Parsing file $filename ...\n" if ($debug > 1);
 		unless ($dryrun) {
 			open( my $fh, '<:utf8', $filename ) or do { warn $!; next };
 			$parser->parse_file_into_model( $url, $fh, $model );
@@ -294,7 +294,7 @@ sub transcode_files {
 			my $ext	= $ext{ $name };
 			my $outfile	= $filename;
 			$outfile	=~ s/[.]nt/.$ext/;
-			warn "Creating file $outfile ...\n" if ($debug);
+			warn "Creating file $outfile ...\n" if ($debug > 1);
 			unless ($dryrun) {
 				open( my $out, '>:utf8', $outfile ) or do { warn $!; next };
 				$s->serialize_model_to_file( $out, $model );
@@ -302,7 +302,7 @@ sub transcode_files {
 		}
 		
 		unless (exists $serializers{'ntriples'}) {
-			warn "Removing file $filename ...\n" if ($debug);
+			warn "Removing file $filename ...\n" if ($debug > 1);
 			unless ($dryrun) {
 				unlink($filename);
 			}
@@ -330,7 +330,7 @@ sub handle_triple {
 		}
 		(undef, my $path, my $thing)	= File::Spec->splitpath( File::Spec->catfile( $base, $file ) );
 		unless ($paths{ $path }) {
-			warn "Creating directory $path ...\n" if ($debug);
+			warn "Creating directory $path ...\n" if ($debug > 1);
 			$paths{ $path }++;
 			$files_per_dir{ $path }	= 0;
 			unless ($dryrun) {
@@ -341,7 +341,7 @@ sub handle_triple {
 		my $filename	= File::Spec->catfile( $path, "${thing}.nt" );
 		unless ($files{ $filename }) {
 			unless (-w $filename) {
-				warn "Creating file $filename ...\n" if ($debug);
+				warn "Creating file $filename ...\n" if ($debug > 1);
 				$files_per_dir{ $path }++;
 				if ($files_per_dir > 0 and $files_per_dir{ $path } > $files_per_dir) {
 					warn "*** Hit maximum file limit in directory $path. Materialized data will be incomplete.\n";
