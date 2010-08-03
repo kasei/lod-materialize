@@ -357,6 +357,7 @@ sub handle_triple {
 		}
 	}
 	if ($count) {
-		print "\r${triples_processed}T / ${files_created}F";
+		my $files_touched	= scalar(@{ [ keys %files ] });
+		print "\r${triples_processed}T / ${files_touched}F / ${files_created}N";
 	}
 }
