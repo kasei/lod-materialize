@@ -104,6 +104,14 @@ Specifies the path template to use in constructing data filenames. This pattern
 will be used to construct an absolute filename by interpreting it relative to
 the path specified for the document root (/path/to/www above).
 
+=item * --directoryindex=FILE
+
+If specified, will look for any files created that share a base name with a
+created directory (e.g. ./foo.rdf and ./foo/), move the file into the directory,
+and rename it to the specified directoryindex FILE name with its original file
+extension intact (e.g. ./foo/index.rdf). This will allow Apache's MultiViews
+mechanism to properly serve the data.
+
 =item * --apache
 
 Print the Apache configuration needed to serve the produced RDF files as linked
@@ -130,6 +138,7 @@ my $in		= 'ntriples';
 my $out		= 'rdfxml,turtle,ntriples';
 my $matchre	= q</resource/(.*)>;
 my $outre	= '/data/$1';
+my $dir_index;
 my $dryrun	= 0;
 my $debug	= 0;
 my $apache	= 0;
@@ -149,6 +158,7 @@ my $result	= GetOptions (
 	"apache"		=> \$apache,
 	"concurrency=s"	=> \$threads,
 	"filelimit|L=i"	=> \$files_per_dir,
+	"directoryindex=s"	=> \$dir_index,
 );
 
 unless (@ARGV) {
@@ -237,6 +247,28 @@ if (@new_formats) {
 	}
 	print "\n" if ($count);
 }
+if (defined($dir_index)) {
+	foreach my $f (keys %files) {
+		my $abs	= File::Spec->rel2abs($f);
+		$abs	=~ s/[.]nt//;
+		my $dir	= $abs;
+		if (-d $dir) {
+			foreach my $f2 (glob("${abs}.*")) {
+				my ($ext)	= $f2 =~ /.*[.](.*)$/ or do { warn $f2; next };
+				my $new	= File::Spec->catfile( File::Spec->rel2abs( $dir ), $dir_index . ".$ext" );
+				if ($debug) {
+					my $f2rel	= File::Spec->abs2rel( $f2 );
+					my $newrel	= File::Spec->abs2rel( $new );
+					warn "Renaming $f2rel -> $newrel\n" if ($debug);
+				}
+				unless ($dryrun) {
+					rename($f2, $new);
+				}
+			}
+		}
+	}
+}
+
 
 
 sub transcode_files {
