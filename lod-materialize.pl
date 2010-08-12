@@ -371,6 +371,7 @@ sub handle_triple {
 					print {$fh} $string;
 				}
 				%output_cache	= ();
+				$cached_triples	= 0;
 			}
 		}
 	}
