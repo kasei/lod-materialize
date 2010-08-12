@@ -83,9 +83,11 @@ Print information about file modifications to STDERR.
 
 Performa dry-run without modifying any files on disk.
 
-=item * --progress
+=item * --progress[=N]
 
-Prints out periodic progress of the materialization process.
+Prints out periodic progress of the materialization process. If specified, the
+frequency argument N is used to only print the progress information on every Nth
+triple.
 
 =item * --concurrency=N
 
@@ -118,6 +120,12 @@ Print the Apache configuration needed to serve the produced RDF files as linked
 data. This includes setting Multiview for content negotiation, the media type
 registration for RDF files and mod_rewrite rules for giving 303 redirects from
 resource URIs to the content negotiated data URIs.
+
+=item * --buffer-size=TRIPLES
+
+Specifies the number of output triples to buffer before flushing data to disk.
+This can dramatically improve performance as writes to commonly used files can
+be aggregated into a single large IO ops instead of many small IO ops.
 
 =back
 
@@ -221,11 +229,14 @@ my $parser				= RDF::Trine::Parser->new( $in );
 my $serializer			= RDF::Trine::Serializer->new( 'ntriples', namespaces => \%namespaces );
 my $files_created		= 0;
 my $triples_processed	= 0;
+my $flushes				= 0;
 my %files_per_dir;
 my %output_cache;
 my $cached_triples;
 open( my $fh, '<:utf8', $file ) or die "Can't open RDF file $file: $!";
 $parser->parse_file( 'http://base/', $fh, \&handle_triple );
+flush_data();
+print_progress();
 print "\n" if ($count);
 
 my %serializers;
@@ -366,19 +377,32 @@ sub handle_triple {
 			$cached_triples++;
 			
 			if ($cached_triples >= $cache_size) {
-				while (my($filename,$string) = each(%output_cache)) {
-					open( my $fh, '>>:utf8', $filename ) or next;
-					print {$fh} $string;
-				}
-				%output_cache	= ();
-				$cached_triples	= 0;
+				flush_data();
 			}
 		}
 	}
 	if ($count) {
 		if ($triples_processed % $count == 0) {
-			my $files_touched	= scalar(@{ [ keys %files ] });
-			print "\r${triples_processed}T / ${files_touched}F / ${files_created}N";
+			print_progress();
 		}
 	}
+}
+
+sub flush_data {
+	my $output	= scalar(@{ [ keys %output_cache ] });
+	if ($output) {
+		$flushes++;
+		warn "flushing data to $output files\n";
+		while (my($filename,$string) = each(%output_cache)) {
+			open( my $fh, '>>:utf8', $filename ) or next;
+			print {$fh} $string;
+		}
+	}
+	%output_cache	= ();
+	$cached_triples	= 0;
+}
+
+sub print_progress {
+	my $files_touched	= scalar(@{ [ keys %files ] });
+	print "\r${triples_processed}T / ${files_touched}F / ${files_created}N / ${flushes}W";
 }
