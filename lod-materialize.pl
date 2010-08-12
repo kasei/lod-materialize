@@ -134,17 +134,19 @@ use Data::Dumper;
 use List::MoreUtils qw(part);
 
 my %namespaces;
-my $in		= 'ntriples';
-my $out		= 'rdfxml,turtle,ntriples';
-my $matchre	= q</resource/(.*)>;
-my $outre	= '/data/$1';
-my $dir_index;
-my $dryrun	= 0;
-my $debug	= 0;
-my $apache	= 0;
-my $count	= 0;
-my $threads	= 1;
+my $in			= 'ntriples';
+my $out			= 'rdfxml,turtle,ntriples';
+my $matchre		= q</resource/(.*)>;
+my $outre		= '/data/$1';
+my $dryrun		= 0;
+my $debug		= 0;
+my $apache		= 0;
+my $count		= 0;
+my $threads		= 1;
+my $cache_size	= 1;
 my $files_per_dir	= 0;
+my $dir_index;
+
 my $result	= GetOptions (
 	"in=s"			=> \$in,
 	"out=s"			=> \$out,
@@ -159,6 +161,7 @@ my $result	= GetOptions (
 	"concurrency=s"	=> \$threads,
 	"filelimit|L=i"	=> \$files_per_dir,
 	"directoryindex=s"	=> \$dir_index,
+	"buffer-size|S=i"	=> \$cache_size,
 );
 
 unless (@ARGV) {
@@ -195,6 +198,9 @@ if ($apache) {
 	my $match	= substr($matchre,1);
 	my $redir	= $outre;
 	$redir		=~ s/\\(\d+)/\$$1/g;
+	if ($dir_index) {
+		print "DirectoryIndex $dir_index\n\n";
+	}
 	print <<"END";
 Options +MultiViews
 AddType text/turtle .ttl
@@ -216,7 +222,8 @@ my $serializer			= RDF::Trine::Serializer->new( 'ntriples', namespaces => \%name
 my $files_created		= 0;
 my $triples_processed	= 0;
 my %files_per_dir;
-
+my %output_cache;
+my $cached_triples;
 open( my $fh, '<:utf8', $file ) or die "Can't open RDF file $file: $!";
 $parser->parse_file( 'http://base/', $fh, \&handle_triple );
 print "\n" if ($count);
@@ -352,8 +359,19 @@ sub handle_triple {
 			$files{ $filename }++;
 		}
 		unless ($dryrun) {
-			open( my $fh, '>>:utf8', $filename ) or next;
-			$serializer->serialize_iterator_to_file( $fh, RDF::Trine::Iterator::Graph->new([$st]) );
+			unless (exists $output_cache{ $filename }) {
+				$output_cache{ $filename }	= '';
+			}
+			$output_cache{ $filename }	.= $serializer->serialize_iterator_to_string( RDF::Trine::Iterator::Graph->new([$st]) );
+			$cached_triples++;
+			
+			if ($cached_triples >= $cache_size) {
+				while (my($filename,$string) = each(%output_cache)) {
+					open( my $fh, '>>:utf8', $filename ) or next;
+					print {$fh} $string;
+				}
+				%output_cache	= ();
+			}
 		}
 	}
 	if ($count) {
