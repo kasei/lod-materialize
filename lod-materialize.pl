@@ -156,9 +156,9 @@ my $result	= GetOptions (
 	"filepattern=s"	=> \$outre,
 	"verbose+"		=> \$debug,
 	"n"				=> \$dryrun,
-	"progress"		=> \$count,
+	"progress:1"	=> \$count,
 	"apache"		=> \$apache,
-	"concurrency=s"	=> \$threads,
+	"concurrency|j=s"	=> \$threads,
 	"filelimit|L=i"	=> \$files_per_dir,
 	"directoryindex=s"	=> \$dir_index,
 	"buffer-size|S=i"	=> \$cache_size,
@@ -376,7 +376,9 @@ sub handle_triple {
 		}
 	}
 	if ($count) {
-		my $files_touched	= scalar(@{ [ keys %files ] });
-		print "\r${triples_processed}T / ${files_touched}F / ${files_created}N";
+		if ($triples_processed % $count == 0) {
+			my $files_touched	= scalar(@{ [ keys %files ] });
+			print "\r${triples_processed}T / ${files_touched}F / ${files_created}N";
+		}
 	}
 }
