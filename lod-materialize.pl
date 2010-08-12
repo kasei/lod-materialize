@@ -371,9 +371,9 @@ sub handle_triple {
 		}
 		unless ($dryrun) {
 			unless (exists $output_cache{ $filename }) {
-				$output_cache{ $filename }	= '';
+				$output_cache{ $filename }	= [];
 			}
-			$output_cache{ $filename }	.= $serializer->serialize_iterator_to_string( RDF::Trine::Iterator::Graph->new([$st]) );
+			push(@{$output_cache{ $filename }}, $st);
 			$cached_triples++;
 			
 			if ($cached_triples >= $cache_size) {
@@ -392,10 +392,9 @@ sub flush_data {
 	my $output	= scalar(@{ [ keys %output_cache ] });
 	if ($output) {
 		$flushes++;
-		warn "flushing data to $output files\n";
-		while (my($filename,$string) = each(%output_cache)) {
-			open( my $fh, '>>:utf8', $filename ) or next;
-			print {$fh} $string;
+		while (my($filename,$array) = each(%output_cache)) {
+			open( my $fh, '>>:utf8', $filename ) or do { warn "*** Failed to open $filename for append: $!"; next };
+			$serializer->serialize_iterator_to_file( $fh, RDF::Trine::Iterator::Graph->new($array) );
 		}
 	}
 	%output_cache	= ();
