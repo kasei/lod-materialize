@@ -135,6 +135,7 @@ use strict;
 use warnings;
 use threads;
 
+use File::Copy;
 use Fcntl qw(LOCK_EX LOCK_UN);
 use RDF::Trine;
 use File::Spec;
@@ -305,7 +306,7 @@ if (defined($dir_index)) {
 					warn "Renaming $f2rel -> $newrel\n";
 				}
 				unless ($dryrun) {
-					rename($f2, $new);
+					copy($f2, $new) or warn "Failed to copy $f2 to $new: $!";
 				}
 			}
 		}
