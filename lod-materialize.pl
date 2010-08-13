@@ -81,7 +81,7 @@ Print information about file modifications to STDERR.
 
 =item * -n
 
-Performa dry-run without modifying any files on disk.
+Perform a dry-run without modifying any files on disk.
 
 =item * --progress[=N]
 
@@ -134,6 +134,8 @@ be aggregated into a single large IO ops instead of many small IO ops.
 use strict;
 use warnings;
 use threads;
+
+use Fcntl qw(LOCK_EX LOCK_UN);
 use RDF::Trine;
 use File::Spec;
 use File::Path 2.06 qw(make_path);
@@ -234,6 +236,7 @@ my %files_per_dir;
 my %output_cache;
 my $cached_triples;
 open( my $fh, '<:utf8', $file ) or die "Can't open RDF file $file: $!";
+my $bnode_model			= RDF::Trine::Model->temporary_model;
 $parser->parse_file( 'http://base/', $fh, \&handle_triple );
 flush_data();
 print_progress();
@@ -315,7 +318,9 @@ sub transcode_files {
 			warn "Creating file $outfile ...\n" if ($debug > 1);
 			unless ($dryrun) {
 				open( my $out, '>:utf8', $outfile ) or do { warn $!; next };
+				flock( $out, LOCK_EX );
 				$s->serialize_model_to_file( $out, $model );
+				flock( $out, LOCK_UN );
 			}
 		}
 		
@@ -332,8 +337,10 @@ sub handle_triple {
 	my $st	= shift;
 	$triples_processed++;
 # 	warn "parsing triple: " . $st->as_string . "\n";
+	my $bnode	= 0;
 	foreach my $pos (qw(subject object)) {
 		my $obj	= $st->$pos();
+		$bnode	= 1 if ($obj->isa('RDF::Trine::Node::Blank'));
 		next unless ($obj->isa('RDF::Trine::Node::Resource'));
 		my $uri	= $obj->uri_value;
 		next unless (my @matched = $uri =~ qr/^${url}$matchre/);
@@ -381,6 +388,11 @@ sub handle_triple {
 			}
 		}
 	}
+	
+	if ($bnode) {
+		$bnode_model->add_statement( $st );
+	}
+	
 	if ($count) {
 		if ($triples_processed % $count == 0) {
 			print_progress();
@@ -394,7 +406,9 @@ sub flush_data {
 		$flushes++;
 		while (my($filename,$array) = each(%output_cache)) {
 			open( my $fh, '>>:utf8', $filename ) or do { warn "*** Failed to open $filename for append: $!"; next };
+			flock( $fh, LOCK_EX );
 			$serializer->serialize_iterator_to_file( $fh, RDF::Trine::Iterator::Graph->new($array) );
+			flock( $fh, LOCK_UN );
 		}
 	}
 	%output_cache	= ();
