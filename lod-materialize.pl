@@ -236,11 +236,33 @@ my %files_per_dir;
 my %output_cache;
 my $cached_triples;
 open( my $fh, '<:utf8', $file ) or die "Can't open RDF file $file: $!";
+my %bnode_heads;
 my $bnode_model			= RDF::Trine::Model->temporary_model;
 $parser->parse_file( 'http://base/', $fh, \&handle_triple );
 flush_data();
 print_progress();
+
+warn "Blank Node model has size " . $bnode_model->size . "\n" if ($debug);
+if ($bnode_model->size > 0) {
+	my %seen;
+	my $iter	= $bnode_model->as_stream;
+	while (my($uri, $bnodes) = each(%bnode_heads)) {
+		foreach my $blank (@$bnodes) {
+			next if ($seen{ $blank->as_string }++);
+			my $bditer	= $bnode_model->bounded_description( $blank );
+			while (my $t = $bditer->next) {
+				next if ($t->subject->isa('RDF::Trine::Node::Resource') and $t->subject->uri_value eq $uri);
+				next if ($t->object->isa('RDF::Trine::Node::Resource') and $t->object->uri_value eq $uri);
+				cond_add_triple_for_node( $t, RDF::Trine::Node::Resource->new($uri) );
+			}
+		}
+	}
+	flush_data();
+	print_progress();
+}
 print "\n" if ($count);
+
+
 
 my %serializers;
 foreach my $s (@out) {
@@ -290,8 +312,6 @@ if (defined($dir_index)) {
 	}
 }
 
-
-
 sub transcode_files {
 	my $process	= shift;
 	my $files	= shift;
@@ -338,59 +358,25 @@ sub handle_triple {
 	$triples_processed++;
 # 	warn "parsing triple: " . $st->as_string . "\n";
 	my $bnode	= 0;
+	my @added;
+	my @bnodes;
 	foreach my $pos (qw(subject object)) {
 		my $obj	= $st->$pos();
-		$bnode	= 1 if ($obj->isa('RDF::Trine::Node::Blank'));
-		next unless ($obj->isa('RDF::Trine::Node::Resource'));
-		my $uri	= $obj->uri_value;
-		next unless (my @matched = $uri =~ qr/^${url}$matchre/);
-# 		my ($source, $dataset, $version, $thing)	= ($1, $2, $3, $4);
-# 		my $path		= File::Spec->catdir( $base, source => $source, 'file', dataset => $dataset, version => $version );
-		
-		my $file	= $outre;
-		foreach my $i (1 .. scalar(@matched)) {
-			while ($file =~ m/(\$|\\)$i/) {
-				$file	=~ s/(\$|\\)$i/$matched[$i-1]/;
-			}
+		if ($obj->isa('RDF::Trine::Node::Blank')) {
+			$bnode	= 1;
+			push(@bnodes, $obj);
 		}
-		(undef, my $path, my $thing)	= File::Spec->splitpath( File::Spec->catfile( $base, $file ) );
-		unless ($paths{ $path }) {
-			warn "Creating directory $path ...\n" if ($debug > 1);
-			$paths{ $path }++;
-			$files_per_dir{ $path }	= 0;
-			unless ($dryrun) {
-				make_path( $path );
-			}
-		}
-		
-		my $filename	= File::Spec->catfile( $path, "${thing}.nt" );
-		unless ($files{ $filename }) {
-			unless (-w $filename) {
-				warn "Creating file $filename ...\n" if ($debug > 1);
-				$files_per_dir{ $path }++;
-				if ($files_per_dir > 0 and $files_per_dir{ $path } > $files_per_dir) {
-					warn "*** Hit maximum file limit in directory $path. Materialized data will be incomplete.\n";
-					next;
-				}
-				$files_created++;
-			}
-			$files{ $filename }++;
-		}
-		unless ($dryrun) {
-			unless (exists $output_cache{ $filename }) {
-				$output_cache{ $filename }	= [];
-			}
-			push(@{$output_cache{ $filename }}, $st);
-			$cached_triples++;
-			
-			if ($cached_triples >= $cache_size) {
-				flush_data();
-			}
+		my $add	= cond_add_triple_for_node( $st, $obj );
+		if ($add) {
+			push(@added, $obj);
 		}
 	}
 	
 	if ($bnode) {
 		$bnode_model->add_statement( $st );
+		foreach my $u (@added) {
+			push( @{ $bnode_heads{ $u->uri_value } }, @bnodes );
+		}
 	}
 	
 	if ($count) {
@@ -398,6 +384,58 @@ sub handle_triple {
 			print_progress();
 		}
 	}
+}
+
+sub cond_add_triple_for_node {
+	my $st	= shift;
+	my $obj	= shift;
+	return unless ($obj->isa('RDF::Trine::Node::Resource'));
+	my $uri	= $obj->uri_value;
+	return unless (my @matched = $uri =~ qr/^${url}$matchre/);
+# 		my ($source, $dataset, $version, $thing)	= ($1, $2, $3, $4);
+# 		my $path		= File::Spec->catdir( $base, source => $source, 'file', dataset => $dataset, version => $version );
+	
+	my $file	= $outre;
+	foreach my $i (1 .. scalar(@matched)) {
+		while ($file =~ m/(\$|\\)$i/) {
+			$file	=~ s/(\$|\\)$i/$matched[$i-1]/;
+		}
+	}
+	(undef, my $path, my $thing)	= File::Spec->splitpath( File::Spec->catfile( $base, $file ) );
+	unless ($paths{ $path }) {
+		warn "Creating directory $path ...\n" if ($debug > 1);
+		$paths{ $path }++;
+		$files_per_dir{ $path }	= 0;
+		unless ($dryrun) {
+			make_path( $path );
+		}
+	}
+	
+	my $filename	= File::Spec->catfile( $path, "${thing}.nt" );
+	unless ($files{ $filename }) {
+		unless (-w $filename) {
+			warn "Creating file $filename ...\n" if ($debug > 1);
+			$files_per_dir{ $path }++;
+			if ($files_per_dir > 0 and $files_per_dir{ $path } > $files_per_dir) {
+				warn "*** Hit maximum file limit in directory $path. Materialized data will be incomplete.\n";
+				next;
+			}
+			$files_created++;
+		}
+		$files{ $filename }++;
+	}
+	unless ($dryrun) {
+		unless (exists $output_cache{ $filename }) {
+			$output_cache{ $filename }	= [];
+		}
+		push(@{$output_cache{ $filename }}, $st);
+		$cached_triples++;
+		
+		if ($cached_triples >= $cache_size) {
+			flush_data();
+		}
+	}
+	return 1;
 }
 
 sub flush_data {
