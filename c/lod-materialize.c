@@ -662,7 +662,7 @@ int main (int argc, char** argv) {
 //	raptor_set_generate_id_handler(rdf_parser, &ctx, _parser_generate_id);
 	
 	raptor_parse_file(rdf_parser, uri, base_uri);
-	fprintf( stderr, "Finished parsing %ld triples\n", ctx.count );
+	fprintf( stderr, "\nFinished parsing %ld triples\n", ctx.count );
 	
 	
 	
