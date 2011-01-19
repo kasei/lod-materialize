@@ -632,6 +632,10 @@ void print_apache_config (parser_ctx* ctx) {
 // http://logd.tw.rpi.edu
 // publish/lod-mat
 int main (int argc, char** argv) {
+	if (argc == 1) {
+		help(argc, argv);
+		exit(1);
+	}
 	raptor_init();
 	world	= librdf_new_world();
 	parser_ctx ctx;
