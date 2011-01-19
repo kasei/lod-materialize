@@ -2,7 +2,7 @@
 CFLAGS	= -g -Wall -pedantic -std=c99
 # CFLAGS	= -g -ggdb -pg -Wall -pedantic -std=c99
 CC		= gcc $(CFLAGS)
-INC		= -I/usr/local/include -I/usr/local/include/rasqal -I/usr/local/rasqal
+INC		= -I/usr/local/include -I/usr/local/include/rasqal -I/usr/include/rasqal
 LIBS	= -lraptor -lrdf -lpcre
 OBJS	= avl.o
 
