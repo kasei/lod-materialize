@@ -13,3 +13,7 @@ lod-materialize: lod-materialize.c avl.o
 
 avl.o: avl.h avl.c
 	$(CC) -c avl.c
+
+clean:
+	rm -f avl.o
+	rm -f lod-materialize
