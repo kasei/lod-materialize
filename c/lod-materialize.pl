@@ -200,7 +200,8 @@ END
 }
 
 my $lodc	= File::Spec->catfile( $Bin, 'lod-materialize' );
-system($lodc, "--uripattern=$matchre", "--filepattern=$outre", "--progress=$count", "--directoryindex=$dir_index", $file, $url, $base);
+my @diridx	= ($dir_index) ? ("--directoryindex=$dir_index") : ();
+system($lodc, "--uripattern=$matchre", "--filepattern=$outre", "--progress=$count", @diridx, $file, $url, $base);
 
 my %ext			= ( rdfxml => 'rdf', 'rdfxml-abbrev' => 'rdf', turtle => 'ttl', ntriples => 'nt' );
 my @new_formats	= grep { $_ ne 'ntriples' } @out;
@@ -219,7 +220,7 @@ if (@new_formats) {
 	}, $base );
 	
 	if ($threads == 1) {
-		transcode_file( 1, \@files );
+		transcode_files( 1, \@files );
 	} else {
 		my @partitions	= part { $i++ % $threads } @files;
 		my @threads;
