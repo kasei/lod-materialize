@@ -642,7 +642,8 @@ int main (int argc, char** argv) {
 	new_config( &ctx, argc, argv );
 	
 	fprintf( stderr, "Input format             : %s\n", ctx.in_format );
-	fprintf( stderr, "Output formats           : %s\n", ctx.out_formats );
+	fprintf( stderr, "Output formats           : ntriples\n" );
+// 	fprintf( stderr, "Output formats           : %s\n", ctx.out_formats );
 	fprintf( stderr, "URI Pattern              : %s\n", ctx.uri_pattern );
 	fprintf( stderr, "File Pattern             : %s\n", ctx.file_pattern );
 	
